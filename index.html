@@ -26,6 +26,7 @@
 
         const GAME_WIDTH = 450;
         const GAME_HEIGHT = 800;
+        const FALL_GAMEOVER_Y = GAME_HEIGHT + 60;
 
         const config = {
             type: Phaser.AUTO,
@@ -61,8 +62,8 @@
         let timerBanana = null, timerBudo = null, timer035 = null;
         let spawnTimer = null;
 
-        // アニメーション状態を保持
         let playerState = 'idle';
+        let lastGroundedTime = 0;
 
         function preload() {
             this.load.image('daytime', 'assets/daytime.jpg');
@@ -98,6 +99,8 @@
             isGameOver = false;
             currentBgKey = 'daytime';
             playerState = 'idle';
+            lastGroundedTime = 0;
+
             itemCounts = { banana: 0, budo: 0, cat035: 0, hogo: 0, shiro: 0 };
             timerBanana = null;
             timerBudo = null;
@@ -107,6 +110,7 @@
             localStorage.setItem('shiro_play_count', playCount);
 
             this.physics.world.TILE_BIAS = 40;
+            this.physics.world.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT + 1000);
 
             if (!bgm) {
                 bgm = this.sound.add('music', { loop: true, volume: 0.5 });
@@ -132,7 +136,6 @@
                 allowGravity: false
             });
 
-            // アニメーションを明示的に作成
             if (!this.anims.exists('run')) {
                 this.anims.create({
                     key: 'run',
@@ -150,9 +153,10 @@
             player.body.setSize(player.width * 0.60, player.height * 0.78);
             player.body.setOffset(player.width * 0.20, player.height * 0.18);
 
-            player.setCollideWorldBounds(true);
+            // 落下ゲームオーバーを確実にするため、下端では止めない
+            player.setCollideWorldBounds(false);
             player.setBounce(0);
-            player.setMaxVelocity(1000, 1200);
+            player.setMaxVelocity(1000, 1400);
 
             scoreText = this.add.text(20, 20, '', {
                 fontSize: '24px',
@@ -161,7 +165,7 @@
                 strokeThickness: 4
             }).setDepth(1000);
 
-            this.physics.add.collider(player, grounds);
+            this.physics.add.collider(player, grounds, onPlayerLand, null, this);
             this.physics.add.overlap(player, enemies, hitEnemy, null, this);
             this.physics.add.overlap(player, items, collectItem, null, this);
             this.physics.add.overlap(player, coins, collectCoin, null, this);
@@ -186,7 +190,6 @@
                 createGround.call(this, i * 128, 700);
             }
 
-            // 初期状態で走る
             setPlayerState('run');
 
             this.input.on('pointerdown', jump, this);
@@ -222,22 +225,28 @@
             setGroupVelocityAndCleanup(items, worldSpeed, -150);
             setGroupVelocityAndCleanup(coins, worldSpeed, -150);
 
-            // 接地判定を安定化
-            const onGround =
-                player.body.blocked.down ||
-                player.body.touching.down ||
-                player.body.wasTouching.down;
+            if (player.y > FALL_GAMEOVER_Y) {
+                gameOver.call(this);
+                return;
+            }
 
-            if (onGround && player.body.velocity.y >= 0) {
+            const body = player.body;
+            const rawGrounded =
+                body.blocked.down ||
+                body.touching.down ||
+                body.wasTouching.down;
+
+            const groundedRecently =
+                (this.time.now - lastGroundedTime) <= 80 &&
+                body.velocity.y >= -20;
+
+            const onGround = rawGrounded || groundedRecently;
+
+            if (onGround) {
                 jumpCount = 0;
                 setPlayerState('run');
             } else {
                 setPlayerState('jump');
-            }
-
-            if (player.y > GAME_HEIGHT + 50) {
-                gameOver.call(this);
-                return;
             }
 
             scoreText.setText(
@@ -245,12 +254,18 @@
             );
         }
 
+        function onPlayerLand() {
+            lastGroundedTime = this.time.now;
+            jumpCount = 0;
+            setPlayerState('run');
+        }
+
         function setPlayerState(state) {
-            if (playerState === state || !player) return;
+            if (!player || playerState === state) return;
             playerState = state;
 
             if (state === 'run') {
-                player.play('run');
+                player.play('run', true);
             } else if (state === 'jump') {
                 player.anims.stop();
                 player.setTexture('cat');
