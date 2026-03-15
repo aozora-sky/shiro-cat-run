@@ -13,7 +13,8 @@
 <body>
     <div id="game-container"></div>
     <script>
-        const SERVER_URL = 'http://ここにサーバーアドレスを記載'; // 運用時に変更してください
+        // 公開URL
+        const GAME_URL = 'https://aozora-sky.github.io/shiro-cat-run/';
 
         const config = {
             type: Phaser.AUTO,
@@ -22,7 +23,10 @@
             parent: 'game-container',
             physics: {
                 default: 'arcade',
-                arcade: { gravity: { y: 1600 }, debug: false }
+                arcade: { 
+                    gravity: { y: 1600 }, 
+                    debug: false 
+                }
             },
             scene: { preload: preload, create: create, update: update }
         };
@@ -41,10 +45,9 @@
         
         let bgm, seGameOver;
         let itemCounts = { banana: 0, budo: 0, cat035: 0, hogo: 0, shiro: 0 };
-        let playCount = parseInt(localStorage.getItem('shiro_play_count') || '0');
         let currentBgKey = 'daytime';
 
-        // 効果時間延長用のタイマー管理変数
+        // タイマー管理
         let timerBanana, timerBudo, timer035;
 
         function preload() {
@@ -70,8 +73,6 @@
             isInvincible = false; scoreMultiplier = 1; lastGroundY = 700; isGameOver = false;
             currentBgKey = 'daytime';
             itemCounts = { banana: 0, budo: 0, cat035: 0, hogo: 0, shiro: 0 };
-            playCount++;
-            localStorage.setItem('shiro_play_count', playCount);
 
             if (!bgm) bgm = this.sound.add('music', { loop: true, volume: 0.5 });
             seGameOver = this.sound.add('gameover_se', { volume: 0.7 });
@@ -95,6 +96,10 @@
             player.play('run');
             player.setCollideWorldBounds(true);
             player.body.world.setBounds(0, 0, 450, 900); 
+
+            // 【修正】めり込み対策：判定サイズを小さくし、足元に重心を置く
+            player.body.setSize(player.width * 0.7, player.height * 0.8);
+            player.body.setOffset(player.width * 0.15, player.height * 0.2);
 
             scoreText = this.add.text(20, 20, '', { fontSize: '24px', fill: '#fff', stroke: '#000', strokeThickness: 4 });
 
@@ -191,11 +196,10 @@
 
         function collectItem(p, i) {
             const type = i.name; i.destroy();
-            
             if (type === 'banana') { 
                 itemCounts.banana++; 
                 maxJumps = 3;
-                if (timerBanana) timerBanana.remove(); // 既存タイマーを破棄
+                if (timerBanana) timerBanana.remove();
                 timerBanana = this.time.delayedCall(5000, () => { maxJumps = 2; });
             }
             else if (type === 'budo') { 
@@ -228,54 +232,46 @@
             if (bgm) bgm.stop(); seGameOver.play();
 
             const finalScore = Math.floor(score + bonusScore);
-            saveGameLog(finalScore);
+
+            // 【修正】ブラウザにハイスコアを保存する
+            let highScore = localStorage.getItem('shiro_high_score') || 0;
+            if (finalScore > highScore) {
+                localStorage.setItem('shiro_high_score', finalScore);
+                highScore = finalScore;
+            }
 
             this.add.rectangle(225, 400, 450, 800, 0x000000, 0.9);
             this.add.text(225, 60, 'GAME OVER', { fontSize: '40px', fill: '#f00', fontWeight: 'bold' }).setOrigin(0.5);
             this.add.text(225, 120, `走破距離 ${finalScore}m`, { fontSize: '28px', fill: '#fff' }).setOrigin(0.5);
+            
             const itemText = `🍌x${itemCounts.banana} 🍇x${itemCounts.budo} 035x${itemCounts.cat035} 🐈x${itemCounts.hogo} 🪙x${itemCounts.shiro}`;
             this.add.text(225, 160, itemText, { fontSize: '18px', fill: '#ffff00' }).setOrigin(0.5);
 
-            this.add.text(225, 220, 'ーー TOP RANKING ーー', { fontSize: '18px', fill: '#aaa' }).setOrigin(0.5);
-            fetchRanking.call(this);
+            this.add.text(225, 220, 'ーー MY BEST RANKING ーー', { fontSize: '18px', fill: '#aaa' }).setOrigin(0.5);
+            this.add.text(225, 260, `1位: あなたの記録 - ${highScore}m`, { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
 
             const btnStyle = { fontSize: '20px', fill: '#000', backgroundColor: '#fff', padding: {x:20, y:10} };
-            const regBtn = this.add.text(225, 520, 'ランキングに登録する', btnStyle).setOrigin(0.5).setInteractive();
-            regBtn.on('pointerdown', () => registerRanking(finalScore));
-
-            const xBtn = this.add.text(225, 590, 'X (Twitter) で共有', { ...btnStyle, backgroundColor: '#1DA1F2', fill: '#fff' }).setOrigin(0.5).setInteractive();
+            
+            // 【修正】X共有ボタンの投稿文をURL入りに変更
+            const xBtn = this.add.text(225, 450, 'X (Twitter) で共有', { ...btnStyle, backgroundColor: '#1DA1F2', fill: '#fff' }).setOrigin(0.5).setInteractive();
             xBtn.on('pointerdown', () => shareToX(finalScore));
 
-            const restartBtn = this.add.text(225, 700, 'Tap to Restart', { fontSize: '24px', fill: '#ffff00' }).setOrigin(0.5).setInteractive();
+            const restartBtn = this.add.text(225, 600, 'Tap to Restart', { fontSize: '24px', fill: '#ffff00' }).setOrigin(0.5).setInteractive();
             restartBtn.on('pointerdown', () => this.scene.restart());
+            
             this.add.text(225, 740, 'Produced by aoba724（あおぞら）', { fontSize: '14px', fill: '#ffffff' }).setOrigin(0.5);
         }
 
-        async function saveGameLog(fScore) {
-            try {
-                const ipRes = await fetch('https://api.ipify.org?format=json');
-                const ipData = await ipRes.json();
-                const log = { playCount, score: fScore, date: new Date().toLocaleString(), ip: ipData.ip };
-                fetch(SERVER_URL + '/log', { method: 'POST', body: JSON.stringify(log) }).catch(()=>{});
-            } catch (e) {}
-        }
-
-        async function fetchRanking() {
-            const dummy = [{name: "ShiroMaster", score: 15400}, {name: "NekoRun", score: 12000}, {name: "035Lover", score: 8500}];
-            dummy.forEach((item, i) => {
-                this.add.text(225, 260 + (i * 35), `${i+1}. ${item.name} - ${item.score}m`, { fontSize: '20px', fill: '#fff' }).setOrigin(0.5);
-            });
-        }
-
-        function registerRanking(fScore) {
-            const name = prompt("ユーザーネームを入力してください", "Player");
-            if (name) alert("ランキングに送信しました！");
-        }
-
         function shareToX(fScore) {
-            const totalItems = itemCounts.banana+itemCounts.budo+itemCounts.cat035+itemCounts.hogo+itemCounts.shiro;
             const itemsStr = `🍌x${itemCounts.banana} 🍇x${itemCounts.budo} 035x${itemCounts.cat035} 🐈x${itemCounts.hogo} 🪙x${itemCounts.shiro}`;
-            const text = encodeURIComponent(`$SHIRO cat runで ${fScore}m 走破しました！\nItem ×${totalItems}個（${itemsStr}）\n\nゲームプレイはこちらから\n${SERVER_URL}\n\n#ShiroCatRun $SHIRO #035HP`);
+            const text = encodeURIComponent(
+                `🐈 $SHIRO cat run 🐈\n` +
+                `${fScore}m 走破しました！\n\n` +
+                `獲得アイテム：\n${itemsStr}\n\n` +
+                `▼ ブラウザで今すぐプレイ！\n` +
+                `${GAME_URL}\n\n` +
+                `#ShiroCatRun $SHIRO #Pumpfun #Solana`
+            );
             window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
         }
     </script>
