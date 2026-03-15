@@ -73,12 +73,11 @@
             items = this.physics.add.group({ allowGravity: false });
             coins = this.physics.add.group({ allowGravity: false });
 
-            // 1秒間に3回、2秒で6コマ（3サイクル）のアニメーション設定
             if (!this.anims.exists('run')) {
                 this.anims.create({
                     key: 'run',
                     frames: [{ key: 'cat' }, { key: 'cat1' }],
-                    frameRate: 3,
+                    frameRate: 3, // 1秒に3回
                     repeat: -1
                 });
             }
@@ -87,11 +86,11 @@
             player.setCollideWorldBounds(true);
             player.body.world.setBounds(0, 0, 450, 900); 
 
-            // めり込み防止の判定サイズ調整
-            player.body.setSize(player.width * 0.8, player.height * 0.85);
-            player.body.setOffset(player.width * 0.1, player.height * 0.15);
+            // 【重要】めり込み防止の確実な設定（ピクセル単位）
+            // 画像のサイズ（通常64px前後）に合わせて、判定を下半分に絞ります
+            player.body.setSize(40, 50, false); // 横幅40px, 高さ50pxに固定
+            player.body.setOffset(12, 10);     // 判定位置を中心に寄せる
 
-            // 判定設定の後に改めてアニメーションを開始
             player.play('run');
 
             scoreText = this.add.text(20, 20, '', { fontSize: '24px', fill: '#fff', stroke: '#000', strokeThickness: 4 });
@@ -118,17 +117,16 @@
         function update() {
             if (isGameOver) return;
             let totalScore = score + bonusScore;
-            let nextKey = currentBgKey;
 
-            if (totalScore >= 30000) {
-                nextKey = 'moon';
-            } else {
+            // 背景切り替え
+            let nextKey = currentBgKey;
+            if (totalScore >= 30000) nextKey = 'moon';
+            else {
                 let cycle = Math.floor(totalScore / 5000) % 4;
                 if (cycle === 1 || cycle === 3) nextKey = 'sunset';
                 else if (cycle === 2) nextKey = 'night';
                 else nextKey = 'daytime';
             }
-
             if (currentBgKey !== nextKey) {
                 currentBgKey = nextKey;
                 this.backGround.setTexture(nextKey);
@@ -144,12 +142,21 @@
                 });
             });
 
+            // 【重要】アニメーションと着地判定の同期
             if (player.body.touching.down) {
                 jumpCount = 0;
-                if (!player.anims.isPlaying) player.play('run');
+                if (player.anims.currentAnim && player.anims.currentAnim.key !== 'run') {
+                    player.play('run');
+                } else if (!player.anims.isPlaying) {
+                    player.play('run');
+                }
+            } else {
+                // 空中にいるときはアニメーションを1コマ目で固定（お好みで）
+                player.anims.stop();
+                player.setFrame(0);
             }
-            if (player.y > 850) gameOver.call(this);
 
+            if (player.y > 850) gameOver.call(this);
             scoreText.setText(`Score: ${Math.floor(totalScore)}m\n${scoreMultiplier > 1 ? '!! DOUBLE SCORE !!' : ''}`);
         }
 
@@ -159,7 +166,6 @@
             if (jumpCount < maxJumps) { 
                 player.setVelocityY(-500); 
                 jumpCount++; 
-                player.stop(); // ジャンプ中はアニメーション停止（必要なら）
             }
         }
 
@@ -213,7 +219,6 @@
             isGameOver = true;
             this.physics.pause(); player.stop(); scoreTimer.remove(); this.spawnTimer.remove();
             if (bgm) bgm.stop(); seGameOver.play();
-
             const finalScore = Math.floor(score + bonusScore);
             let highScore = localStorage.getItem('shiro_high_score') || 0;
             if (finalScore > highScore) { localStorage.setItem('shiro_high_score', finalScore); highScore = finalScore; }
