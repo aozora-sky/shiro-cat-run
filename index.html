@@ -70,6 +70,8 @@
         let rankingTexts = [];
         let rankingLoadingText = null;
         let isSubmittingRanking = false;
+        let hasSubmittedRanking = false;
+        let rankingRegisterButton = null;
 
         function preload() {
             this.load.image('daytime', 'assets/daytime.jpg');
@@ -108,6 +110,8 @@
             lastGroundedTime = 0;
             wasOnGroundForLanding = false;
             isSubmittingRanking = false;
+            hasSubmittedRanking = false;
+            rankingRegisterButton = null;
 
             itemCounts = { banana: 0, budo: 0, cat035: 0, hogo: 0, shiro: 0 };
             timerBanana = null;
@@ -484,13 +488,13 @@
                 padding: { x: 20, y: 10 }
             };
 
-            const regBtn = this.add.text(225, 520, 'ランキングに登録する', btnStyle)
+            rankingRegisterButton = this.add.text(225, 520, 'ランキングに登録する', btnStyle)
                 .setOrigin(0.5)
                 .setInteractive()
                 .setDepth(2001);
 
-            regBtn.on('pointerdown', async () => {
-                if (isSubmittingRanking) return;
+            rankingRegisterButton.on('pointerdown', async () => {
+                if (isSubmittingRanking || hasSubmittedRanking) return;
                 await registerRanking.call(this, finalScore);
             });
 
@@ -566,6 +570,8 @@
         }
 
         async function registerRanking(fScore) {
+            if (isSubmittingRanking || hasSubmittedRanking) return;
+
             const nameInput = prompt("ユーザーネームを入力してください", "Player");
             if (!nameInput) return;
 
@@ -596,7 +602,15 @@
                 const data = await res.json();
 
                 if (data.ok) {
+                    hasSubmittedRanking = true;
+
+                    if (rankingRegisterButton) {
+                        rankingRegisterButton.destroy();
+                        rankingRegisterButton = null;
+                    }
+
                     alert("ランキングに送信しました！");
+
                     rankingLoadingText = this.add.text(225, 260, 'ランキング更新中...', {
                         fontSize: '20px',
                         fill: '#fff'
@@ -631,21 +645,24 @@
         }
 
         function shareToX(fScore) {
-            const totalItems =
-                itemCounts.banana +
-                itemCounts.budo +
-                itemCounts.cat035 +
-                itemCounts.hogo +
-                itemCounts.shiro;
-
+            const totalScore = Math.floor(fScore);
             const itemsStr = `🍌x${itemCounts.banana} 🍇x${itemCounts.budo} 035x${itemCounts.cat035} 🐈x${itemCounts.hogo} 🪙x${itemCounts.shiro}`;
 
             const text = encodeURIComponent(
-                `$SHIRO cat runで ${fScore}m 走破しました！\nItem ×${totalItems}個（${itemsStr}）\n\nゲームプレイはこちらから\n${SERVER_URL}\n\n#ShiroCatRun $SHIRO #035HP`
+                `$SHIRO cat runで${totalScore}m走破しました！
+Item ${itemsStr}
+
+TOTAL Score ${totalScore}m
+
+ゲームプレイはこちらから
+${SERVER_URL}
+
+#ShiroCatRun $SHIRO #035HP`
             );
 
             window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
         }
     </script>
 </body>
+</html>
 </html>
