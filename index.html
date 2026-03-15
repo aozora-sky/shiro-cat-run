@@ -73,11 +73,12 @@
             items = this.physics.add.group({ allowGravity: false });
             coins = this.physics.add.group({ allowGravity: false });
 
+            // アニメーション設定（確実に再生させるため名前をチェック）
             if (!this.anims.exists('run')) {
                 this.anims.create({
                     key: 'run',
                     frames: [{ key: 'cat' }, { key: 'cat1' }],
-                    frameRate: 3, // 1秒に3回
+                    frameRate: 3,
                     repeat: -1
                 });
             }
@@ -86,10 +87,10 @@
             player.setCollideWorldBounds(true);
             player.body.world.setBounds(0, 0, 450, 900); 
 
-            // 【重要】めり込み防止の確実な設定（ピクセル単位）
-            // 画像のサイズ（通常64px前後）に合わせて、判定を下半分に絞ります
-            player.body.setSize(40, 50, false); // 横幅40px, 高さ50pxに固定
-            player.body.setOffset(12, 10);     // 判定位置を中心に寄せる
+            // 【再修正】接地感の最適化
+            // setSizeの第3引数をtrueにすることで、リサイズ時に位置が狂うのを防ぎます
+            player.body.setSize(player.width * 0.8, player.height, true); 
+            player.body.setOffset(player.width * 0.1, 0); // 左右を中央に寄せるだけ
 
             player.play('run');
 
@@ -142,18 +143,19 @@
                 });
             });
 
-            // 【重要】アニメーションと着地判定の同期
+            // 【アニメーション制御の再編】
             if (player.body.touching.down) {
                 jumpCount = 0;
-                if (player.anims.currentAnim && player.anims.currentAnim.key !== 'run') {
-                    player.play('run');
-                } else if (!player.anims.isPlaying) {
+                // 地面にいる時にアニメーションが流れていなければ再生
+                if (!player.anims.isPlaying || player.anims.currentAnim.key !== 'run') {
                     player.play('run');
                 }
             } else {
-                // 空中にいるときはアニメーションを1コマ目で固定（お好みで）
-                player.anims.stop();
-                player.setFrame(0);
+                // 空中ではアニメーションを一時停止（1コマ目で固定）
+                if (player.anims.isPlaying) {
+                    player.anims.stop();
+                    player.setTexture('cat'); // ジャンプ中は'cat'画像で固定
+                }
             }
 
             if (player.y > 850) gameOver.call(this);
@@ -164,7 +166,7 @@
             if (isGameOver) return;
             if (bgm && !bgm.isPlaying) bgm.play();
             if (jumpCount < maxJumps) { 
-                player.setVelocityY(-500); 
+                player.setVelocityY(-550); 
                 jumpCount++; 
             }
         }
