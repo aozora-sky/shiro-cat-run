@@ -61,15 +61,15 @@
         let timerBanana = null, timerBudo = null, timer035 = null;
         let spawnTimer = null;
 
+        // アニメーション状態を保持
+        let playerState = 'idle';
+
         function preload() {
             this.load.image('daytime', 'assets/daytime.jpg');
             this.load.image('sunset', 'assets/sunset.jpg');
             this.load.image('night', 'assets/night.jpg');
             this.load.image('moon', 'assets/moon.jpg');
 
-            // ★ GitHub Pages対策：
-            // ファイル名は大文字小文字を厳密に合わせること
-            // 実ファイル名が cat.png なら必ず cat.png にする
             this.load.image('cat', 'assets/cat.png');
             this.load.image('cat1', 'assets/cat1.png');
 
@@ -97,6 +97,7 @@
             lastEnemyX = 0;
             isGameOver = false;
             currentBgKey = 'daytime';
+            playerState = 'idle';
             itemCounts = { banana: 0, budo: 0, cat035: 0, hogo: 0, shiro: 0 };
             timerBanana = null;
             timerBudo = null;
@@ -105,7 +106,6 @@
             playCount++;
             localStorage.setItem('shiro_play_count', playCount);
 
-            // 衝突のすり抜け対策
             this.physics.world.TILE_BIAS = 40;
 
             if (!bgm) {
@@ -132,8 +132,7 @@
                 allowGravity: false
             });
 
-            // ★ アニメーション
-            // 2秒で6回コマ替え ≒ 1秒あたり3回切り替え
+            // アニメーションを明示的に作成
             if (!this.anims.exists('run')) {
                 this.anims.create({
                     key: 'run',
@@ -141,22 +140,19 @@
                         { key: 'cat' },
                         { key: 'cat1' }
                     ],
-                    frameRate: 3,
+                    frameRate: 6,
                     repeat: -1
                 });
             }
 
             player = this.physics.add.sprite(100, 400, 'cat');
 
-            // 当たり判定を少しだけ足元寄りに調整
-            // 透明余白がある画像でも床にめり込みにくくする
             player.body.setSize(player.width * 0.60, player.height * 0.78);
             player.body.setOffset(player.width * 0.20, player.height * 0.18);
 
             player.setCollideWorldBounds(true);
             player.setBounce(0);
             player.setMaxVelocity(1000, 1200);
-            player.play('run');
 
             scoreText = this.add.text(20, 20, '', {
                 fontSize: '24px',
@@ -186,10 +182,12 @@
                 loop: true
             });
 
-            // 初期床
             for (let i = 0; i < 5; i++) {
                 createGround.call(this, i * 128, 700);
             }
+
+            // 初期状態で走る
+            setPlayerState('run');
 
             this.input.on('pointerdown', jump, this);
         }
@@ -217,7 +215,6 @@
             this.backGround.tilePositionX += gameSpeed * 0.5;
             gameSpeed += 0.0005;
 
-            // ★ 物理速度で左へ流す
             const worldSpeed = -(gameSpeed * 60);
 
             setGroupVelocityAndCleanup(grounds, worldSpeed, -150);
@@ -225,17 +222,17 @@
             setGroupVelocityAndCleanup(items, worldSpeed, -150);
             setGroupVelocityAndCleanup(coins, worldSpeed, -150);
 
-            // ★ 接地判定を安定化
-            const onGround = player.body.blocked.down || player.body.touching.down;
+            // 接地判定を安定化
+            const onGround =
+                player.body.blocked.down ||
+                player.body.touching.down ||
+                player.body.wasTouching.down;
 
-            if (onGround) {
+            if (onGround && player.body.velocity.y >= 0) {
                 jumpCount = 0;
-                if (player.anims.currentAnim?.key !== 'run' || !player.anims.isPlaying) {
-                    player.play('run', true);
-                }
+                setPlayerState('run');
             } else {
-                player.anims.stop();
-                player.setTexture('cat');
+                setPlayerState('jump');
             }
 
             if (player.y > GAME_HEIGHT + 50) {
@@ -246,6 +243,18 @@
             scoreText.setText(
                 `Score: ${Math.floor(totalScore)}m\n${scoreMultiplier > 1 ? '!! DOUBLE SCORE !!' : ''}`
             );
+        }
+
+        function setPlayerState(state) {
+            if (playerState === state || !player) return;
+            playerState = state;
+
+            if (state === 'run') {
+                player.play('run');
+            } else if (state === 'jump') {
+                player.anims.stop();
+                player.setTexture('cat');
+            }
         }
 
         function setGroupVelocityAndCleanup(group, velocityX, destroyX) {
@@ -280,6 +289,7 @@
             if (jumpCount < maxJumps) {
                 player.setVelocityY(-550);
                 jumpCount++;
+                setPlayerState('jump');
             }
         }
 
@@ -288,7 +298,6 @@
 
             const x = 600;
 
-            // 床生成
             if (Math.random() > 0.19) {
                 const nextY = Phaser.Math.Clamp(
                     lastGroundY + Phaser.Math.Between(-40, 40),
